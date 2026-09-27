@@ -6,6 +6,8 @@ import {
   Box,
   Palette,
   ClipboardList,
+  Warehouse,
+  Sparkles,
   ArrowLeft,
 } from "lucide-react";
 
@@ -16,7 +18,7 @@ export default function AdminLayout({
 }) {
   return (
     <div className="flex min-h-screen bg-background text-foreground">
-      {/* Sidebar Admin */}
+      {/* Sidebar Admin Completo */}
       <aside className="w-64 shrink-0 border-r border-border bg-surface p-6">
         <Link href="/" className="font-serif text-2xl font-medium">
           RMODULARES<span className="text-accent">.</span>
@@ -48,11 +50,18 @@ export default function AdminLayout({
             Materiales PBR 3D
           </Link>
           <Link
+            href="/admin/inventario"
+            className="flex items-center gap-3 px-3 py-2.5 font-medium transition hover:bg-background"
+          >
+            <Warehouse className="h-4 w-4 text-accent" />
+            Stock SKU & Taller
+          </Link>
+          <Link
             href="/admin/pedidos"
             className="flex items-center gap-3 px-3 py-2.5 font-medium transition hover:bg-background"
           >
             <ClipboardList className="h-4 w-4 text-accent" />
-            Pedidos & Taller SRI
+            Pedidos & Facturas SRI
           </Link>
           <Link
             href="/admin/envios"
@@ -60,6 +69,13 @@ export default function AdminLayout({
           >
             <Truck className="h-4 w-4 text-accent" />
             Motor de Envíos & IVA
+          </Link>
+          <Link
+            href="/admin/lookbooks"
+            className="flex items-center gap-3 px-3 py-2.5 font-medium transition hover:bg-background"
+          >
+            <Sparkles className="h-4 w-4 text-accent" />
+            Lookbooks & Hotspots
           </Link>
         </nav>
 

@@ -87,6 +87,15 @@ export default function LoginPage() {
             {loading ? "Verificando..." : "Entrar a RModulares"}
           </button>
         </form>
+
+
+        <p className="mt-6 text-center text-xs text-muted">
+          ¿No tienes cuenta?{" "}
+          <Link href="/registro" className="font-medium text-accent underline">
+            Regístrate aquí
+          </Link>
+        </p>
+                
       </div>
     </div>
   );
