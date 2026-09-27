@@ -1,0 +1,422 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ==========================================
+// 1. USUARIOS Y AUTENTICACIÓN (NextAuth)
+// ==========================================
+
+enum Role {
+  CUSTOMER
+  ADMIN
+}
+
+enum IdentificationType {
+  CEDULA
+  RUC
+  PASAPORTE
+}
+
+model User {
+  id                 String              @id @default(cuid())
+  name               String?
+  email              String              @unique
+  emailVerified      DateTime?
+  passwordHash       String?             // Para login con credenciales
+  image              String?
+  role               Role                @default(CUSTOMER)
+  
+  // Datos de facturación por defecto (Ecuador)
+  identificationType IdentificationType?
+  identificationNum  String?             // 10 dígitos (Cédula) o 13 dígitos (RUC)
+  phone              String?
+  
+  accounts           Account[]
+  sessions           Session[]
+  addresses          Address[]
+  orders             Order[]
+  
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Address {
+  id          String   @id @default(cuid())
+  userId      String
+  label       String   // Ej: "Casa", "Oficina Quito"
+  province    String   // Ej: "Pichincha", "Guayas", "Azuay"
+  canton      String   // Ej: "Quito", "Guayaquil", "Cuenca"
+  street      String   // Calle principal, numeración y secundaria
+  reference   String?  // Referencia para el transporte de muebles
+  postalCode  String?
+  isDefault   Boolean  @default(false)
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ==========================================
+// 2. CATÁLOGO, 3D/AR Y CONFIGURADOR HÍBRIDO
+// ==========================================
+
+enum InventoryMode {
+  STOCK_SKU       // Solo vende variantes cerradas con stock físico
+  MADE_TO_ORDER   // Solo fabricación bajo pedido (calcula precio + tiempo)
+  HYBRID          // Permite comprar SKUs en stock inmediato O personalizar bajo pedido
+}
+
+enum MaterialCategory {
+  WOOD
+  FABRIC
+  LEATHER
+  METAL
+  STONE
+  GLASS
+}
+
+model Category {
+  id          String    @id @default(cuid())
+  name        String    // Sala, Comedor, Dormitorio, Oficina, Exterior
+  slug        String    @unique
+  description String?   @db.Text
+  coverImage  String    // URL Cloudinary
+  products    Product[]
+  createdAt   DateTime  @default(now())
+}
+
+model Product {
+  id                  String               @id @default(cuid())
+  name                String
+  slug                String               @unique
+  subtitle            String?              // Frase editorial corta
+  description         String               @db.Text
+  categoryId          String
+  category            Category             @relation(fields: [categoryId], references: [id])
+  
+  // Precios y Modo de Inventario
+  basePriceUsd        Decimal              @db.Decimal(10, 2)
+  inventoryMode       InventoryMode        @default(HYBRID)
+  baseLeadTimeDays    Int                  @default(15) // Días de fabricación si es Made-to-Order
+  
+  // Activos Multimedia y 3D/AR (Cloudinary)
+  images              ProductImage[]
+  modelGlbUrl         String               // Único archivo .glb base en Cloudinary
+  modelUsdzUrl        String?              // Opcional para AR directo en iOS Quick Look
+  arScaleFixed        Boolean              @default(true)
+  defaultCameraOrbit  String?              // Ej: "45deg 75deg 2.5m"
+  
+  // Dimensiones y Peso Base (Para cálculo de envío por Peso/Volumen)
+  baseWidthCm         Float
+  baseHeightCm        Float
+  baseDepthCm         Float
+  baseWeightKg        Float
+  
+  // Relaciones del Configurador
+  meshZones           ProductMeshZone[]    // Qué partes del .glb se pueden personalizar
+  sizeOptions         ProductSizeOption[]  // Tamaños disponibles
+  stockVariants       ProductVariantSku[]  // Variantes con stock físico listo (Opción Híbrida)
+  
+  // Apariciones en Lookbooks y Pedidos
+  lookbookHotspots    LookbookHotspot[]
+  orderItems          OrderItem[]
+  
+  isFeatured          Boolean              @default(false)
+  isActive            Boolean              @default(true)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+}
+
+model ProductImage {
+  id          String  @id @default(cuid())
+  productId   String
+  url         String  // Cloudinary URL
+  publicId    String  // Cloudinary Public ID para borrado/transformación
+  altText     String?
+  isPrimary   Boolean @default(false)
+  isHover     Boolean @default(false) // Imagen que se revela en el micro-hover del catálogo
+  sortOrder   Int     @default(0)
+
+  product     Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+// Biblioteca global de Materiales y Texturas PBR para React Three Fiber
+model MaterialOption {
+  id              String             @id @default(cuid())
+  name            String             // Ej: "Roble Ahumado", "Lino Belga Arena"
+  skuCode         String             @unique // Ej: "MAT-ROB-01"
+  category        MaterialCategory
+  
+  // Propiedades visuales 3D (PBR)
+  colorHex        String             @default("#FFFFFF")
+  swatchImageUrl  String?            // Miniatura circular para el UI del configurador
+  albedoMapUrl    String?            // Textura base en Cloudinary
+  normalMapUrl    String?            // Mapa de relieve en Cloudinary
+  roughnessMapUrl String?            // Mapa de rugosidad
+  roughnessFactor Float              @default(0.7)
+  metalnessFactor Float              @default(0.0)
+  textureRepeat   Float              @default(1.0) // Escala UV de la textura
+  
+  // Impacto en negocio
+  priceDeltaUsd   Decimal            @default(0.00) @db.Decimal(10, 2) // Costo extra al elegirlo
+  extraLeadDays   Int                @default(0)
+  isAvailable     Boolean            @default(true)
+  
+  meshZones       ProductMeshZone[]  @relation("ZoneAllowedMaterials")
+  createdAt       DateTime           @default(now())
+}
+
+// Conecta una malla del archivo .glb (ej. "mesh_tapiz") con los materiales permitidos
+model ProductMeshZone {
+  id                String           @id @default(cuid())
+  productId         String
+  zoneLabel         String           // Nombre en UI: "Tapizado", "Estructura de Madera", "Patas"
+  meshNodeName      String           // Nombre exacto del nodo dentro del .glb (ej: "mesh_cushion")
+  defaultMaterialId String
+  sortOrder         Int              @default(0)
+
+  product           Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  allowedMaterials  MaterialOption[] @relation("ZoneAllowedMaterials")
+}
+
+// Opciones de Tamaño para un Mueble
+model ProductSizeOption {
+  id            String  @id @default(cuid())
+  productId     String
+  label         String  // Ej: "2 Plazas (180cm)", "3 Plazas XL (240cm)"
+  code          String  // Ej: "SZ-180", "SZ-240"
+  
+  widthCm       Float
+  heightCm      Float
+  depthCm       Float
+  weightKg      Float
+  
+  // Escala para aplicar al modelo .glb en R3F [x, y, z]
+  scaleX        Float   @default(1.0)
+  scaleY        Float   @default(1.0)
+  scaleZ        Float   @default(1.0)
+  
+  priceDeltaUsd Decimal @default(0.00) @db.Decimal(10, 2)
+  isDefault     Boolean @default(false)
+
+  product       Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+// Control de Stock Físico para entrega inmediata (Parte SKU del modelo Híbrido)
+model ProductVariantSku {
+  id                String   @id @default(cuid())
+  productId         String
+  sku               String   @unique // Ej: "SOFA-NORD-SZ180-LINOARENA"
+  
+  // JSON con la combinación exacta: { "sizeId": "...", "materials": { "mesh_tapiz": "mat_id_1" } }
+  configurationHash String   // Hash único para detectar en el configurador si esta combinación tiene stock inmediato
+  configurationJson Json
+  
+  stockQuantity     Int      @default(0)
+  priceOverrideUsd  Decimal? @db.Decimal(10, 2) // Si tiene un precio especial distinto a la suma dinámica
+  isActive          Boolean  @default(true)
+
+  product           Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  orderItems        OrderItem[]
+
+  @@unique([productId, configurationHash])
+}
+
+// ==========================================
+// 3. LOOKBOOKS E INSPIRACIÓN (SHOP THE LOOK)
+// ==========================================
+
+model Lookbook {
+  id          String          @id @default(cuid())
+  title       String          // Ej: "Colección Otoño en Cumbayá: Calidez Orgánica"
+  slug        String          @unique
+  excerpt     String          @db.Text
+  editorialMd String          @db.Text // Contenido tipo revista
+  coverImage  String          // Cloudinary URL
+  seasonTag   String?         // Ej: "Editorial 04 / 2026"
+  isPublished Boolean         @default(false)
+  
+  scenes      LookbookScene[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+}
+
+model LookbookScene {
+  id          String            @id @default(cuid())
+  lookbookId  String
+  imageUrl    String            // Foto de ambiente en alta resolución
+  caption     String?
+  sortOrder   Int               @default(0)
+  
+  lookbook    Lookbook          @relation(fields: [lookbookId], references: [id], onDelete: Cascade)
+  hotspots    LookbookHotspot[]
+}
+
+model LookbookHotspot {
+  id              String        @id @default(cuid())
+  sceneId         String
+  productId       String
+  
+  // Coordenadas en porcentaje (0.0 a 100.0) para que sea 100% responsive en móvil y desktop
+  xPercent        Float
+  yPercent        Float
+  
+  // Opcional: Configuración preseleccionada al abrir el producto desde este punto
+  presetConfigJson Json?
+
+  scene           LookbookScene @relation(fields: [sceneId], references: [id], onDelete: Cascade)
+  product         Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+// ==========================================
+// 4. MOTOR DE ENVÍOS CONFIGURABLE (ADMIN)
+// ==========================================
+
+enum ShippingStrategy {
+  FLAT_BY_LOCATION   // Tarifa fija según Provincia/Cantón
+  FREE_OVER_AMOUNT   // Gratis si supera $X USD (si no, aplica tarifa de ubicación o base)
+  WEIGHT_VOLUME      // Calculado por fórmula de Peso (kg) y Volumen (m3)
+}
+
+model StoreSettings {
+  id                        String           @id @default("global_settings")
+  
+  // Configuración Fiscal Ecuador
+  ivaPercent                Decimal          @default(15.00) @db.Decimal(5, 2) // IVA vigente en Ecuador (15%)
+  currency                  String           @default("USD")
+  
+  // Estrategia de Envío Activa (Elegida por el ADMINISTRADOR)
+  activeShippingStrategy    ShippingStrategy @default(FLAT_BY_LOCATION)
+  
+  // Parámetros Regla 1: Monto Mínimo para Envío Gratis
+  freeShippingThresholdUsd  Decimal          @default(800.00) @db.Decimal(10, 2)
+  fallbackBaseShippingUsd   Decimal          @default(25.00) @db.Decimal(10, 2)
+  
+  // Parámetros Regla 2: Cálculo por Peso (kg) y Volumen (m³)
+  baseDispatchFeeUsd        Decimal          @default(10.00) @db.Decimal(10, 2)
+  costPerKgUsd              Decimal          @default(0.50) @db.Decimal(10, 2)
+  costPerCubicMeterUsd      Decimal          @default(45.00) @db.Decimal(10, 2)
+  
+  updatedAt                 DateTime         @updatedAt
+}
+
+// Tarifas por Provincia/Cantón del Ecuador
+model ShippingZoneRate {
+  id                  String   @id @default(cuid())
+  province            String   // Ej: "Pichincha", "Guayas", "Azuay", "Manabí"
+  canton              String   @default("*") // "*" aplica a toda la provincia, o específico ej: "Quito"
+  flatRateUsd         Decimal  @db.Decimal(10, 2) // Usado en FLAT_BY_LOCATION
+  zoneMultiplier      Float    @default(1.0)      // Multiplicador de distancia si se usa WEIGHT_VOLUME
+  estimatedDaysMin    Int      @default(2)
+  estimatedDaysMax    Int      @default(5)
+  isActive            Boolean  @default(true)
+
+  @@unique([province, canton])
+}
+
+// ==========================================
+// 5. PEDIDOS, CHECKOUT Y FACTURACIÓN ECUADOR
+// ==========================================
+
+enum OrderStatus {
+  PENDING_PAYMENT
+  PAID
+  IN_PRODUCTION      // Para muebles Made-to-Order
+  READY_FOR_DISPATCH
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+model Order {
+  id                      String             @id @default(cuid())
+  orderNumber             String             @unique // Ej: "RM-2026-0001"
+  userId                  String?
+  user                    User?              @relation(fields: [userId], references: [id])
+  
+  status                  OrderStatus        @default(PENDING_PAYMENT)
+  
+  // Datos de Facturación obligatorios en Ecuador
+  billingIdType           IdentificationType
+  billingIdNumber         String             // Cédula (10) / RUC (13) / Pasaporte
+  billingName             String             // Razón Social o Nombres Completos
+  billingEmail            String
+  billingPhone            String
+  billingAddress          String
+  
+  // Dirección de Entrega
+  shippingProvince        String
+  shippingCanton          String
+  shippingStreet          String
+  shippingReference       String?
+  
+  // Desglose Financiero en USD
+  subtotalUsd             Decimal            @db.Decimal(10, 2)
+  shippingCostUsd         Decimal            @db.Decimal(10, 2)
+  appliedShippingStrategy ShippingStrategy   // Registro histórico de qué regla aplicó
+  ivaPercentApplied       Decimal            @db.Decimal(5, 2)
+  ivaAmountUsd            Decimal            @db.Decimal(10, 2)
+  totalUsd                Decimal            @db.Decimal(10, 2)
+  
+  // Integración Stripe
+  stripePaymentIntentId   String?            @unique
+  paidAt                  DateTime?
+  
+  items                   OrderItem[]
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
+}
+
+model OrderItem {
+  id                    String             @id @default(cuid())
+  orderId               String
+  productId             String
+  variantSkuId          String?            // Si compró una variante en stock
+  
+  productNameSnapshot   String
+  quantity              Int
+  unitPriceUsd          Decimal            @db.Decimal(10, 2)
+  
+  // Si fue personalizado o de stock
+  isMadeToOrder         Boolean            @default(false)
+  estimatedLeadTimeDays Int                @default(3)
+  
+  // Snapshot exacto de la configuración 3D elegida por el cliente
+  // Ej: { "size": "240cm", "materials": { "Tapizado": "Lino Arena", "Patas": "Roble" } }
+  customConfiguration   Json
+  previewImageUrl       String?
+
+  order                 Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product               Product            @relation(fields: [productId], references: [id])
+  variantSku            ProductVariantSku? @relation(fields: [variantSkuId], references: [id])
+}
