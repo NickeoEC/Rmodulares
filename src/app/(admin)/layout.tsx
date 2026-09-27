@@ -3,8 +3,9 @@ import Link from "next/link";
 import {
   LayoutDashboard,
   Truck,
-  Package,
-  ShoppingCart,
+  Box,
+  Palette,
+  ClipboardList,
   ArrowLeft,
 } from "lucide-react";
 
@@ -24,13 +25,34 @@ export default function AdminLayout({
           Panel Administrador
         </p>
 
-        <nav className="mt-8 space-y-2 text-sm">
+        <nav className="mt-8 space-y-1.5 text-sm">
           <Link
             href="/admin"
             className="flex items-center gap-3 px-3 py-2.5 font-medium transition hover:bg-background"
           >
             <LayoutDashboard className="h-4 w-4 text-accent" />
-            Dashboard & Pedidos
+            Dashboard General
+          </Link>
+          <Link
+            href="/admin/productos"
+            className="flex items-center gap-3 px-3 py-2.5 font-medium transition hover:bg-background"
+          >
+            <Box className="h-4 w-4 text-accent" />
+            Muebles & Modelos .GLB
+          </Link>
+          <Link
+            href="/admin/materiales"
+            className="flex items-center gap-3 px-3 py-2.5 font-medium transition hover:bg-background"
+          >
+            <Palette className="h-4 w-4 text-accent" />
+            Materiales PBR 3D
+          </Link>
+          <Link
+            href="/admin/pedidos"
+            className="flex items-center gap-3 px-3 py-2.5 font-medium transition hover:bg-background"
+          >
+            <ClipboardList className="h-4 w-4 text-accent" />
+            Pedidos & Taller SRI
           </Link>
           <Link
             href="/admin/envios"
